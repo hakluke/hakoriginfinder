@@ -150,6 +150,7 @@ func main() {
 	resp, err := client.Get("http://" + *hostname)
 	if err != nil {
 		log.Println("Error getting original URL:", err)
+		os.Exit(2)
 	}
 
 	// Read the response
