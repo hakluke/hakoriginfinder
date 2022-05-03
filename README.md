@@ -49,3 +49,11 @@ MATCH https://1.1.1.1 0
 NOMATCH https://1.1.1.3 19534
 NOMATCH https://1.1.1.2 19532
 ```
+
+## Installation
+
+Install golang, then run:
+
+```
+go install github.com/hakluke/hakoriginfinder@latest
+```
