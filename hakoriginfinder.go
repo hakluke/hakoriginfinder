@@ -143,7 +143,7 @@ func main() {
 
         // Set up HTTP client
         var client = &http.Client{
-                Timeout:   time.Duration( time.Second * timeout),
+                Timeout:   time.Second * time.Duration(*timeout),
                 Transport: transport,
         }
 
