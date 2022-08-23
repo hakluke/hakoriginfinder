@@ -98,11 +98,18 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
         }
 }
 
+var timeout = time.Duration(2 * time.Second)
+
+func dialTimeout(network, addr string) (net.Conn, error) {
+    return net.DialTimeout(network, addr, timeout)
+}
+
 func main() {
 
         // Set up CLI flags
         workers := flag.Int("t", 32, "numbers of threads")
         threshold := flag.Int("l", 5, "levenshtein threshold, higher means more lenient")
+        timeout := flag.Int("T", 5, "Timeout in seconds")
         hostname := flag.String("h", "", "hostname of site, e.g. www.hakluke.com")
         hostnameSSL := flag.Bool("s", false, "Original hostname is over SSL (default: false)")
         hostnamePort := flag.String("p", "", "Original hostname listen port")
@@ -129,12 +136,13 @@ func main() {
 
         // Set up Transport (disable SSL verification)
         transport := &http.Transport{
+                Dial: dialTimeout,
                 TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
         }
 
         // Set up HTTP client
         var client = &http.Client{
-                Timeout:   time.Second * 10,
+                Timeout:   time.Second * timeout,
                 Transport: transport,
         }
 
