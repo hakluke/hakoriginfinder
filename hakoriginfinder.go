@@ -7,6 +7,7 @@ import (
         "fmt"
         "io/ioutil"
         "log"
+        "net"
         "net/http"
         "os"
         "strconv"
@@ -142,7 +143,7 @@ func main() {
 
         // Set up HTTP client
         var client = &http.Client{
-                Timeout:   time.Second * timeout,
+                Timeout:   time.Second * time.Duration(timeout),
                 Transport: transport,
         }
 
