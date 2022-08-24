@@ -92,7 +92,7 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                         if lev <= threshold {
                                 resChan <- "MATCH " + url + " " + strconv.Itoa(lev)
                         } else {
-                                resChan <- "NOMATCH " + url + " " + strconv.Itoa(lev)
+                                fmt.Fprintf(os.Stderr, "NOMATCH %s %s\n", url, strconv.Itoa(lev));
                         }
 
                 }
