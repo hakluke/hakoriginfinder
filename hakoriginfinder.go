@@ -58,11 +58,12 @@ func minimum(a, b, c int) int {
 // Make HTTP request, check response
 func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int) {
         defer wg.Done()
+        var urls []string
         for ip := range ips {
 
                 // make a http and https url if no protocol given. If given, just use that
                 if !strings.HasPrefix(ip, "http://") && !strings.HasPrefix(ip, "https://") {
-                        urls := []string{"http://" + ip, "https://" + ip}
+                        urls = []string{"http://" + ip, "https://" + ip}
                 } else {
                         urls = []string{ip}
                 }
