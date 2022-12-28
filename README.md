@@ -55,5 +55,5 @@ NOMATCH https://1.1.1.2 19532
 Install golang, then run:
 
 ```
-go install github.com/hakluke/hakoriginfinder@latest
+go install github.com/carlospolop-forks/hakoriginfinder@latest
 ```
