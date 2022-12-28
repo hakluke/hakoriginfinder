@@ -60,8 +60,12 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
         defer wg.Done()
         for ip := range ips {
 
-                // make a http and https url
-                urls := []string{"http://" + ip, "https://" + ip}
+                // make a http and https url if no protocol given. If given, just use that
+                if !strings.HasPrefix(ip, "http://") && !strings.HasPrefix(ip, "https://") {
+                        urls := []string{"http://" + ip, "https://" + ip}
+                } else {
+                        urls = []string{ip}
+                }
 
                 for _, url := range urls {
                         // Create a request
