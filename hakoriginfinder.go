@@ -57,7 +57,7 @@ func minimum(a, b, c int) int {
 }
 
 // Make HTTP request, check response
-func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int) {
+func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int, debug bool) {
         defer wg.Done()
         var urls []string
         for ip := range ips {
@@ -93,6 +93,12 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                         }
                         text := string(body)
 
+                        // If debug is enabled, print the response
+                        if debug {
+                                fmt.Println("Response from " + url + ":")
+                                fmt.Println(text)
+                        }
+
                         lev := levenshtein([]rune(text), []rune(ogBody))
 
                         if lev <= threshold {
@@ -120,6 +126,7 @@ func main() {
         hostname := flag.String("h", "", "hostname of site, e.g. www.hakluke.com")
         hostnameSSL := flag.Bool("s", false, "Original hostname is over SSL (default: false)")
         hostnamePort := flag.String("p", "", "Original hostname listen port")
+        debug := flag.Bool("d", false, "Debug: Show web servers responses (default: false)")
         flag.Parse()
 
         // Sanity check, print usage if no hostname specified
@@ -200,9 +207,14 @@ func main() {
         // Convert body to string
         ogBody := string(body)
 
+        if *debug {
+                fmt.Println("Original body:")
+                fmt.Println(ogBody)
+        }
+
         // Fire up workers
         for i := 0; i < *workers; i++ {
-                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold)
+                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold, *debug)
         }
 
         // Add ips from stdin to ips channel
