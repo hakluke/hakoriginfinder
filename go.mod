@@ -1,3 +1,3 @@
-module github.com/carlospolop-forks/hakoriginfinder@latest
+module github.com/hakluke/hakoriginfinder@latest
 
 go 1.18
