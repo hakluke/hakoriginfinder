@@ -3,8 +3,6 @@
 
 Tool for discovering the origin host behind a reverse proxy. Useful for bypassing WAFs and other reverse proxies.
 
-**This is a working and improved version!**
-
 ## How does it work?
 
 This tool will first make a HTTP request to the hostname that you provide and store the response, then it will make a request to every IP address that you provide via HTTP (80) and HTTPS (443), with the `Host` header set to the original host. Each HTTP response is then compared to the original using the Levenshtein algorithm to determine similarity. If the response is similar, it will be deemed a match.
@@ -58,5 +56,5 @@ NOMATCH https://1.1.1.2 19532
 Install golang, then run:
 
 ```
-go install github.com/carlospolop-forks/hakoriginfinder@latest
+go install github.com/hakluke/hakoriginfinder@latest
 ```
