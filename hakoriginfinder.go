@@ -7,9 +7,11 @@ import (
         "fmt"
         "io/ioutil"
         "log"
+        "net"
         "net/http"
         "os"
         "strconv"
+        "strings"
         "sync"
         "time"
 )
@@ -55,12 +57,17 @@ func minimum(a, b, c int) int {
 }
 
 // Make HTTP request, check response
-func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int) {
+func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int, debug bool) {
         defer wg.Done()
+        var urls []string
         for ip := range ips {
 
-                // make a http and https url
-                urls := []string{"http://" + ip, "https://" + ip}
+                // make a http and https url if no protocol given. If given, just use that
+                if !strings.HasPrefix(ip, "http://") && !strings.HasPrefix(ip, "https://") {
+                        urls = []string{"http://" + ip, "https://" + ip}
+                } else {
+                        urls = []string{ip}
+                }
 
                 for _, url := range urls {
                         // Create a request
@@ -71,7 +78,7 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                         }
 
                         // Add the custom host header to the request
-                        req.Header.Add("Host", hostname)
+                        req.Host = hostname
 
                         // Do the request
                         resp, err := client.Do(req)
@@ -86,16 +93,28 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                         }
                         text := string(body)
 
+                        // If debug is enabled, print the response
+                        if debug {
+                                fmt.Println("Response from " + url + ":")
+                                fmt.Println(text)
+                        }
+
                         lev := levenshtein([]rune(text), []rune(ogBody))
 
                         if lev <= threshold {
                                 resChan <- "MATCH " + url + " " + strconv.Itoa(lev)
                         } else {
-                                resChan <- "NOMATCH " + url + " " + strconv.Itoa(lev)
+                                fmt.Fprintf(os.Stderr, "NOMATCH %s %s\n", url, strconv.Itoa(lev));
                         }
 
                 }
         }
+}
+
+var timeout = time.Duration(2 * time.Second)
+
+func dialTimeout(network, addr string) (net.Conn, error) {
+    return net.DialTimeout(network, addr, timeout)
 }
 
 func main() {
@@ -103,9 +122,11 @@ func main() {
         // Set up CLI flags
         workers := flag.Int("t", 32, "numbers of threads")
         threshold := flag.Int("l", 5, "levenshtein threshold, higher means more lenient")
+        timeout := flag.Int("T", 5, "Timeout in seconds")
         hostname := flag.String("h", "", "hostname of site, e.g. www.hakluke.com")
         hostnameSSL := flag.Bool("s", false, "Original hostname is over SSL (default: false)")
         hostnamePort := flag.String("p", "", "Original hostname listen port")
+        debug := flag.Bool("d", false, "Debug: Show web servers responses (default: false)")
         flag.Parse()
 
         // Sanity check, print usage if no hostname specified
@@ -129,12 +150,13 @@ func main() {
 
         // Set up Transport (disable SSL verification)
         transport := &http.Transport{
+                Dial: dialTimeout,
                 TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
         }
 
         // Set up HTTP client
         var client = &http.Client{
-                Timeout:   time.Second * 10,
+                Timeout:   time.Second * time.Duration(*timeout),
                 Transport: transport,
         }
 
@@ -185,9 +207,14 @@ func main() {
         // Convert body to string
         ogBody := string(body)
 
+        if *debug {
+                fmt.Println("Original body:")
+                fmt.Println(ogBody)
+        }
+
         // Fire up workers
         for i := 0; i < *workers; i++ {
-                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold)
+                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold, *debug)
         }
 
         // Add ips from stdin to ips channel
