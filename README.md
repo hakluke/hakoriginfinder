@@ -22,7 +22,7 @@ The hostname is set with `-h`, there is no default.
 
 ## Output
 
-The output is 3 columns, separated by spaces. The first column is either "MATCH" or "NOMATCH" depending on whether the Levenshtein threshold was reached or not. The second column is the URL being teseted, and the third column is the Levenshtein score.
+The output is 3 columns, separated by spaces. The first column is either "MATCH" or "NOMATCH" depending on whether the Levenshtein threshold was reached or not. The second column is the URL being tested, and the third column is the Levenshtein score.
 
 ### Output example
 
