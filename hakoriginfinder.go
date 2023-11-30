@@ -8,8 +8,10 @@ import (
         "io/ioutil"
         "log"
         "net/http"
+        "net/url"
         "os"
         "strconv"
+        "strings"
         "sync"
         "time"
 )
@@ -55,46 +57,49 @@ func minimum(a, b, c int) int {
 }
 
 // Make HTTP request, check response
-func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int) {
+func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, u *url.URL, ogBody string, threshold int) {
         defer wg.Done()
         for ip := range ips {
 
-                // make a http and https url
-                urls := []string{"http://" + ip, "https://" + ip}
-
-                for _, url := range urls {
-                        // Create a request
-                        req, err := http.NewRequest("GET", url, nil)
-                        if err != nil {
-                                fmt.Println("Error sending HTTP request", err)
-                                continue
-                        }
-
-                        // Add the custom host header to the request
-                        req.Header.Add("Host", hostname)
-
-                        // Do the request
-                        resp, err := client.Do(req)
-                        if err != nil {
-                                continue
-                        }
-
-                        body, err := ioutil.ReadAll(resp.Body)
-                        if err != nil {
-                                fmt.Println("Error: ", err)
-                                continue
-                        }
-                        text := string(body)
-
-                        lev := levenshtein([]rune(text), []rune(ogBody))
-
-                        if lev <= threshold {
-                                resChan <- "MATCH " + url + " " + strconv.Itoa(lev)
-                        } else {
-                                resChan <- "NOMATCH " + url + " " + strconv.Itoa(lev)
-                        }
-
+                // Handle port and url strings
+                port := ""
+                portPos := strings.Index(u.Host, ":")
+                if portPos != -1 {
+                        port = u.Host[portPos:]
                 }
+                ipUrl := u.Scheme + "://" + ip + port + u.Path
+                
+                // Create a request
+                req, err := http.NewRequest("GET", ipUrl, nil)
+                if err != nil {
+                        fmt.Println("Error sending HTTP request", err)
+                        continue
+                }
+
+                // Add the custom host header to the request (can be host:port)
+                req.Header.Add("Host", u.Host)
+
+                // Do the request
+                resp, err := client.Do(req)
+                if err != nil {
+                        continue
+                }
+
+                body, err := ioutil.ReadAll(resp.Body)
+                if err != nil {
+                        fmt.Println("Error: ", err)
+                        continue
+                }
+                text := string(body)
+
+                lev := levenshtein([]rune(text), []rune(ogBody))
+
+                if lev <= threshold {
+                        resChan <- "MATCH " + ipUrl + " " + strconv.Itoa(lev)
+                } else {
+                        resChan <- "NOMATCH " + ipUrl + " " + strconv.Itoa(lev)
+                }
+
         }
 }
 
@@ -103,17 +108,16 @@ func main() {
         // Set up CLI flags
         workers := flag.Int("t", 32, "numbers of threads")
         threshold := flag.Int("l", 5, "levenshtein threshold, higher means more lenient")
-        hostname := flag.String("h", "", "hostname of site, e.g. www.hakluke.com")
-        hostnameSSL := flag.Bool("s", false, "Original hostname is over SSL (default: false)")
-        hostnamePort := flag.String("p", "", "Original hostname listen port")
+        hostname := flag.String("h", "", "host/url of site, e.g. https://www.hakluke.com:443/blog")
         flag.Parse()
 
         // Sanity check, print usage if no hostname specified
-        if *hostname == "" {
-                fmt.Println("A list of IP addresses must be provided via stdin, along with a hostname of the website you are trying to find the origin of.\n\nE.g. prips 1.1.1.0/24 | hakoriginfinder -h www.hakluke.com\n\nOptions:")
+        u, urlerror := url.Parse(*hostname)
+        if urlerror != nil || *hostname == "" {
+                fmt.Println("A list of IP addresses must be provided via stdin, along with an host/URL of the website you are trying to find the origin of.\n\nE.g. prips 1.1.1.0/24 | hakoriginfinder -h https://www.hakluke.com\n\nOptions:")
                 flag.PrintDefaults()
                 os.Exit(2)
-        }
+	    }
 
         // IP addresses are provided via stdin
         scanner := bufio.NewScanner(os.Stdin)
@@ -151,30 +155,11 @@ func main() {
         // Get original URL
         resp := &http.Response{}
         var err error
-        if *hostnameSSL {
-                port:="443"
-                if *hostnamePort != "" {
-                        port=*hostnamePort
-                } else {
-
-                }
-                resp, err = client.Get("https://" + *hostname + ":"+port)
-                if err != nil {
-                        log.Println("Error getting original URL:", err)
-                        os.Exit(2)
-                }
-        } else {
-                port:="80"
-                if *hostnamePort != "" {
-                        port=*hostnamePort
-                }
-                resp, err = client.Get("http://" + *hostname + ":"+port)
-                if err != nil {
-                        log.Println("Error getting original URL:", err)
-                        os.Exit(2)
-                }
+        resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path) 
+        if err != nil {
+                log.Println("Error getting original URL:", err)
+                os.Exit(2)
         }
-
 
         // Read the response
         body, err := ioutil.ReadAll(resp.Body)
@@ -187,7 +172,7 @@ func main() {
 
         // Fire up workers
         for i := 0; i < *workers; i++ {
-                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold)
+                go worker(ips, resChan, &wg, client, u, ogBody, *threshold)
         }
 
         // Add ips from stdin to ips channel
