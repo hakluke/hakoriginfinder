@@ -27,9 +27,11 @@ The output is 3 columns, separated by spaces. The first column is either "MATCH"
 ### Output example
 
 ```
-hakluke$ prips 1.1.1.0/24 | hakoriginfinder -l 500 -h https://one.one.one.one/index.html
+hakluke$ prips 1.1.1.0/24 | ./hakoriginfinder -h https://one.one.one.one/index.html
 Redirect 308 to: https://one.one.one.one/
-MATCH https://1.1.1.1/ 228
+NOMATCH https://1.1.1.2/ 56383
+NOMATCH https://1.1.1.3/ 56383
+MATCH https://1.1.1.1/ 0
 ```
 
 ## Installation
