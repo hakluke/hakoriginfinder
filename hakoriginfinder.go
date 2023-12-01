@@ -78,7 +78,7 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                 }
 
                 // Add the custom host header to the request (can be host:port)
-                req.Header.Add("Host", u.Host)
+                req.Host = u.Host
 
                 // Do the request
                 resp, err := client.Do(req)
