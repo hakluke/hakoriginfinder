@@ -3,6 +3,7 @@ package main
 import (
         "bufio"
         "crypto/tls"
+        "errors"
         "flag"
         "fmt"
         "io/ioutil"
@@ -82,6 +83,7 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                 // Do the request
                 resp, err := client.Do(req)
                 if err != nil {
+                        // Redirects are skipped here silently as errors due to CheckRedirect
                         continue
                 }
 
@@ -137,25 +139,27 @@ func main() {
         }
 
         // Set up HTTP client
+        var RedirectAttemptedError = errors.New("redirect")
         var client = &http.Client{
-                Timeout:   time.Second * 10,
+                Timeout:   time.Second * 5,
                 Transport: transport,
+                CheckRedirect: func(req *http.Request, via []*http.Request) error {
+                        return RedirectAttemptedError
+                },
         }
-
-        // Set up waitgroup
-        var wg sync.WaitGroup
-        wg.Add(*workers)
-
-        // Wait for workers to be done, then close the "done" channel
-        go func() {
-                wg.Wait()
-                close(done)
-        }()
 
         // Get original URL
         resp := &http.Response{}
         var err error
-        resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path) 
+        resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path)
+        // Handle redirect error
+        for errors.Is(err, RedirectAttemptedError) {
+                redirectUrl, _ := resp.Location()
+                fmt.Println("Redirect", resp.StatusCode, "to:", redirectUrl)
+                u = redirectUrl
+                resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path)
+        }
+        // Handle any error
         if err != nil {
                 log.Println("Error getting original URL:", err)
                 os.Exit(2)
@@ -169,6 +173,16 @@ func main() {
 
         // Convert body to string
         ogBody := string(body)
+
+        // Set up waitgroup
+        var wg sync.WaitGroup
+        wg.Add(*workers)
+
+        // Wait for workers to be done, then close the "done" channel
+        go func() {
+                wg.Wait()
+                close(done)
+        }()
 
         // Fire up workers
         for i := 0; i < *workers; i++ {
