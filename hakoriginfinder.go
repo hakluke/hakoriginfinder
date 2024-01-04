@@ -68,7 +68,15 @@ func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client
                 if portPos != -1 {
                         port = u.Host[portPos:]
                 }
+
+                // Check if ip address from stdin is ipv6
+                if strings.Count(ip, ":") >= 2 {
+                        ip = "[" + ip + "]"
+                }
+
+                // Create ip URL
                 ipUrl := u.Scheme + "://" + ip + port + u.Path
+                
                 
                 // Create a request
                 req, err := http.NewRequest("GET", ipUrl, nil)
