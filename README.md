@@ -29,22 +29,28 @@ The output is 3 columns, separated by spaces. The first column is either "MATCH"
 ### Output example
 
 ```
-hakluke$ prips 1.1.1.0/24 | hakoriginfinder -h https://one.one.one.one/index.html
+$ prips 1.1.1.0/24 | hakoriginfinder -h http://one.one.one.one:80/index.html -p 80,443,8080,8443
+Redirect 301 to: https://one.one.one.one/index.html
 Redirect 308 to: https://one.one.one.one/
-NOMATCH http://1.1.1.13:443/ 56290
-NOMATCH http://1.1.1.21:443/ 56290
-NOMATCH http://1.1.1.14:443/ 56290
-NOMATCH http://1.1.1.22:443/ 56290
-NOMATCH http://1.1.1.30:443/ 56290
-NOMATCH http://1.1.1.27:443/ 56290
-NOMATCH http://1.1.1.23:443/ 56290
+NOMATCH http://1.1.1.31:443/ 56290
+NOMATCH http://1.1.1.17:443/ 56290
+NOMATCH http://1.1.1.4:443/ 56290
 NOMATCH http://1.1.1.0:443/ 56290
+NOMATCH http://1.1.1.27:443/ 56290
+NOMATCH http://1.1.1.1:443/ 56290
+NOMATCH http://1.1.1.11:443/ 56290
+NOMATCH http://1.1.1.3:443/ 56290
+NOMATCH http://1.1.1.25:443/ 56290
+NOMATCH http://1.1.1.5:443/ 56290
+NOMATCH http://1.1.1.24:443/ 56290
 ... snipped for brevity ...
-NOMATCH http://1.1.1.252:443/ 56290
-NOMATCH http://1.1.1.253:443/ 56290
-NOMATCH http://1.1.1.254:443/ 56290
-NOMATCH http://1.1.1.251:443/ 56290
+NOMATCH http://1.1.1.185:8443/ 56290
+NOMATCH http://1.1.1.183:8443/ 56290
 MATCH https://1.1.1.1:443/ 0
+... snipped for brevity ...
+NOMATCH http://1.1.1.253:8443/ 56290
+NOMATCH http://1.1.1.252:8443/ 56290
+MATCH https://1.1.1.1:8443/ 0
 ```
 
 ## Installation
