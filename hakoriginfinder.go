@@ -58,58 +58,57 @@ func minimum(a, b, c int) int {
 }
 
 // Make HTTP request, check response
-func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, u *url.URL, ogBody string, threshold int) {
+func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, u *url.URL, ogBody string, threshold int, ports []string) {
         defer wg.Done()
         for ip := range ips {
+                // http and https schemes
+                schemes := []string{"http", "https"}
+                for _, scheme := range schemes {
+                        for _, port := range ports {
 
-                // Handle port and url strings
-                port := ""
-                portPos := strings.Index(u.Host, ":")
-                if portPos != -1 {
-                        port = u.Host[portPos:]
+                                // Check if ip address from stdin is ipv6
+                                if strings.Count(ip, ":") >= 2 {
+                                        ip = "[" + ip + "]"
+                                }
+
+                                // Create ip URL
+                                ipUrl := scheme + "://" + ip + ":" + port + u.Path
+                                
+                                // Create a request
+                                req, err := http.NewRequest("GET", ipUrl, nil)
+                                if err != nil {
+                                        fmt.Println("Error sending HTTP request", err)
+                                        continue
+                                }
+
+                                // Add the custom host header to the request (can be host:port)
+                                req.Host = u.Host
+
+                                // Do the request
+                                resp, err := client.Do(req)
+                                if err != nil {
+                                        // Redirects are skipped here silently as errors
+                                        // due to CheckRedirect
+                                        continue
+                                }
+
+                                body, err := ioutil.ReadAll(resp.Body)
+                                if err != nil {
+                                        fmt.Println("Error: ", err)
+                                        continue
+                                }
+                                text := string(body)
+
+                                lev := levenshtein([]rune(text), []rune(ogBody))
+
+                                if lev <= threshold {
+                                        resChan <- "MATCH " + ipUrl + " " + strconv.Itoa(lev)
+                                } else {
+                                        resChan <- "NOMATCH " + ipUrl + " " + strconv.Itoa(lev)
+
+                                }
+                        }
                 }
-
-                // Check if ip address from stdin is ipv6
-                if strings.Count(ip, ":") >= 2 {
-                        ip = "[" + ip + "]"
-                }
-
-                // Create ip URL
-                ipUrl := u.Scheme + "://" + ip + port + u.Path
-                
-                
-                // Create a request
-                req, err := http.NewRequest("GET", ipUrl, nil)
-                if err != nil {
-                        fmt.Println("Error sending HTTP request", err)
-                        continue
-                }
-
-                // Add the custom host header to the request (can be host:port)
-                req.Host = u.Host
-
-                // Do the request
-                resp, err := client.Do(req)
-                if err != nil {
-                        // Redirects are skipped here silently as errors due to CheckRedirect
-                        continue
-                }
-
-                body, err := ioutil.ReadAll(resp.Body)
-                if err != nil {
-                        fmt.Println("Error: ", err)
-                        continue
-                }
-                text := string(body)
-
-                lev := levenshtein([]rune(text), []rune(ogBody))
-
-                if lev <= threshold {
-                        resChan <- "MATCH " + ipUrl + " " + strconv.Itoa(lev)
-                } else {
-                        resChan <- "NOMATCH " + ipUrl + " " + strconv.Itoa(lev)
-                }
-
         }
 }
 
@@ -118,7 +117,8 @@ func main() {
         // Set up CLI flags
         workers := flag.Int("t", 32, "numbers of threads")
         threshold := flag.Int("l", 5, "levenshtein threshold, higher means more lenient")
-        hostname := flag.String("h", "", "host/url of site, e.g. https://www.hakluke.com:443/blog")
+        hostname := flag.String("h", "", "scheme://host[:port]/url of site, e.g. https://www.hakluke.com:443/blog")
+        scanPorts := flag.String("p", "80,443", "comma separated ports to scan for IP addresses given via stdin, e.g. 80,443,8000,8080,8443")
         flag.Parse()
 
         // Sanity check, print usage if no hostname specified
@@ -128,6 +128,9 @@ func main() {
                 flag.PrintDefaults()
                 os.Exit(2)
 	    }
+
+        // Handle ports argument
+        ports := strings.Split(*scanPorts, ",")
 
         // IP addresses are provided via stdin
         scanner := bufio.NewScanner(os.Stdin)
@@ -194,7 +197,7 @@ func main() {
 
         // Fire up workers
         for i := 0; i < *workers; i++ {
-                go worker(ips, resChan, &wg, client, u, ogBody, *threshold)
+                go worker(ips, resChan, &wg, client, u, ogBody, *threshold, ports)
         }
 
         // Add ips from stdin to ips channel
