@@ -3,13 +3,16 @@ package main
 import (
         "bufio"
         "crypto/tls"
+        "errors"
         "flag"
         "fmt"
         "io/ioutil"
         "log"
         "net/http"
+        "net/url"
         "os"
         "strconv"
+        "strings"
         "sync"
         "time"
 )
@@ -55,45 +58,56 @@ func minimum(a, b, c int) int {
 }
 
 // Make HTTP request, check response
-func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, hostname string, ogBody string, threshold int) {
+func worker(ips <-chan string, resChan chan<- string, wg *sync.WaitGroup, client *http.Client, u *url.URL, ogBody string, threshold int, ports []string) {
         defer wg.Done()
         for ip := range ips {
+                // http and https schemes
+                schemes := []string{"http", "https"}
+                for _, scheme := range schemes {
+                        for _, port := range ports {
 
-                // make a http and https url
-                urls := []string{"http://" + ip, "https://" + ip}
+                                // Check if ip address from stdin is ipv6
+                                if strings.Count(ip, ":") >= 2 {
+                                        ip = "[" + ip + "]"
+                                }
 
-                for _, url := range urls {
-                        // Create a request
-                        req, err := http.NewRequest("GET", url, nil)
-                        if err != nil {
-                                fmt.Println("Error sending HTTP request", err)
-                                continue
+                                // Create ip URL
+                                ipUrl := scheme + "://" + ip + ":" + port + u.Path
+                                
+                                // Create a request
+                                req, err := http.NewRequest("GET", ipUrl, nil)
+                                if err != nil {
+                                        fmt.Println("Error sending HTTP request", err)
+                                        continue
+                                }
+
+                                // Add the custom host header to the request (can be host:port)
+                                req.Host = u.Host
+
+                                // Do the request
+                                resp, err := client.Do(req)
+                                if err != nil {
+                                        // Redirects are skipped here silently as errors
+                                        // due to CheckRedirect
+                                        continue
+                                }
+
+                                body, err := ioutil.ReadAll(resp.Body)
+                                if err != nil {
+                                        fmt.Println("Error: ", err)
+                                        continue
+                                }
+                                text := string(body)
+
+                                lev := levenshtein([]rune(text), []rune(ogBody))
+
+                                if lev <= threshold {
+                                        resChan <- "MATCH " + ipUrl + " " + strconv.Itoa(lev)
+                                } else {
+                                        resChan <- "NOMATCH " + ipUrl + " " + strconv.Itoa(lev)
+
+                                }
                         }
-
-                        // Add the custom host header to the request
-                        req.Header.Add("Host", hostname)
-
-                        // Do the request
-                        resp, err := client.Do(req)
-                        if err != nil {
-                                continue
-                        }
-
-                        body, err := ioutil.ReadAll(resp.Body)
-                        if err != nil {
-                                fmt.Println("Error: ", err)
-                                continue
-                        }
-                        text := string(body)
-
-                        lev := levenshtein([]rune(text), []rune(ogBody))
-
-                        if lev <= threshold {
-                                resChan <- "MATCH " + url + " " + strconv.Itoa(lev)
-                        } else {
-                                resChan <- "NOMATCH " + url + " " + strconv.Itoa(lev)
-                        }
-
                 }
         }
 }
@@ -103,17 +117,20 @@ func main() {
         // Set up CLI flags
         workers := flag.Int("t", 32, "numbers of threads")
         threshold := flag.Int("l", 5, "levenshtein threshold, higher means more lenient")
-        hostname := flag.String("h", "", "hostname of site, e.g. www.hakluke.com")
-        hostnameSSL := flag.Bool("s", false, "Original hostname is over SSL (default: false)")
-        hostnamePort := flag.String("p", "", "Original hostname listen port")
+        hostname := flag.String("h", "", "scheme://host[:port]/url of site, e.g. https://www.hakluke.com:443/blog")
+        scanPorts := flag.String("p", "80,443", "comma separated ports to scan for IP addresses given via stdin, e.g. 80,443,8000,8080,8443")
         flag.Parse()
 
         // Sanity check, print usage if no hostname specified
-        if *hostname == "" {
-                fmt.Println("A list of IP addresses must be provided via stdin, along with a hostname of the website you are trying to find the origin of.\n\nE.g. prips 1.1.1.0/24 | hakoriginfinder -h www.hakluke.com\n\nOptions:")
+        u, urlerror := url.Parse(*hostname)
+        if urlerror != nil || *hostname == "" {
+                fmt.Println("A list of IP addresses must be provided via stdin, along with an host/URL of the website you are trying to find the origin of.\n\nE.g. prips 1.1.1.0/24 | hakoriginfinder -h https://www.hakluke.com\n\nOptions:")
                 flag.PrintDefaults()
                 os.Exit(2)
-        }
+	    }
+
+        // Handle ports argument
+        ports := strings.Split(*scanPorts, ",")
 
         // IP addresses are provided via stdin
         scanner := bufio.NewScanner(os.Stdin)
@@ -133,10 +150,40 @@ func main() {
         }
 
         // Set up HTTP client
+        var RedirectAttemptedError = errors.New("redirect")
         var client = &http.Client{
-                Timeout:   time.Second * 10,
+                Timeout:   time.Second * 5,
                 Transport: transport,
+                CheckRedirect: func(req *http.Request, via []*http.Request) error {
+                        return RedirectAttemptedError
+                },
         }
+
+        // Get original URL
+        resp := &http.Response{}
+        var err error
+        resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path)
+        // Handle redirect error
+        for errors.Is(err, RedirectAttemptedError) {
+                redirectUrl, _ := resp.Location()
+                fmt.Println("Redirect", resp.StatusCode, "to:", redirectUrl)
+                u = redirectUrl
+                resp, err = client.Get(u.Scheme + "://" + u.Host + u.Path)
+        }
+        // Handle any error
+        if err != nil {
+                log.Println("Error getting original URL:", err)
+                os.Exit(2)
+        }
+
+        // Read the response
+        body, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+                log.Fatal("Error reading HTTP response from original host.", err)
+        }
+
+        // Convert body to string
+        ogBody := string(body)
 
         // Set up waitgroup
         var wg sync.WaitGroup
@@ -148,46 +195,9 @@ func main() {
                 close(done)
         }()
 
-        // Get original URL
-        resp := &http.Response{}
-        var err error
-        if *hostnameSSL {
-                port:="443"
-                if *hostnamePort != "" {
-                        port=*hostnamePort
-                } else {
-
-                }
-                resp, err = client.Get("https://" + *hostname + ":"+port)
-                if err != nil {
-                        log.Println("Error getting original URL:", err)
-                        os.Exit(2)
-                }
-        } else {
-                port:="80"
-                if *hostnamePort != "" {
-                        port=*hostnamePort
-                }
-                resp, err = client.Get("http://" + *hostname + ":"+port)
-                if err != nil {
-                        log.Println("Error getting original URL:", err)
-                        os.Exit(2)
-                }
-        }
-
-
-        // Read the response
-        body, err := ioutil.ReadAll(resp.Body)
-        if err != nil {
-                log.Fatal("Error reading HTTP response from original host.", err)
-        }
-
-        // Convert body to string
-        ogBody := string(body)
-
         // Fire up workers
         for i := 0; i < *workers; i++ {
-                go worker(ips, resChan, &wg, client, *hostname, ogBody, *threshold)
+                go worker(ips, resChan, &wg, client, u, ogBody, *threshold, ports)
         }
 
         // Add ips from stdin to ips channel
