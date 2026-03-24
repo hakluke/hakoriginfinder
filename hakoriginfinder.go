@@ -185,6 +185,11 @@ func main() {
         // Convert body to string
         ogBody := string(body)
 
+        // Set TLS ServerName (SNI) to the target hostname so that HTTPS
+        // requests to candidate IPs present the correct SNI value. Without
+        // this, servers that route by SNI would not recognise the request.
+        transport.TLSClientConfig.ServerName = u.Hostname()
+
         // Set up waitgroup
         var wg sync.WaitGroup
         wg.Add(*workers)
